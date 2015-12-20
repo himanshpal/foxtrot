@@ -1,0 +1,36 @@
+<div class="modal fade" id="setupEventBrowser" tabindex="-1" role="dialog" aria-labelledby="setupEventBrowserModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="form-horizontal settings-form" role="form" data-toggle="validate" data-delay=""
+              id="setupEventBrowserForm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                    <h4 class="modal-title" id="setupEventBrowserModalLabel">Setup Event Browser</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <div class="col-sm-12">
+                            <input type="hidden" class="tileId">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-sm-4 control-label" for="eventbrowser_count"><strong>Record count per
+                            page</strong></label>
+
+                        <div class="col-sm-8">
+                            <input type="number" min="10" max="100" class="form-control event-count"
+                                   placeholder="Between 10 and 100" required id="eventbrowser_count">
+
+                            <div class="help-block with-errors">Between 10 and 100 events per page</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary save-changes" disabled="disabled">Done</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>

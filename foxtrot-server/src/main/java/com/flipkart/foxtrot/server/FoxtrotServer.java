@@ -111,7 +111,7 @@ public class FoxtrotServer extends Service<FoxtrotServerConfiguration> {
         ClusterManager clusterManager = new ClusterManager(
                 hazelcastConnection, healthChecks, configuration.getHttpConfiguration().getPort());
 
-        environment.manage(HBaseTableConnection);
+//        environment.manage(HBaseTableConnection);
         environment.manage(elasticsearchConnection);
         environment.manage(hazelcastConnection);
         environment.manage(tableMetadataManager);
