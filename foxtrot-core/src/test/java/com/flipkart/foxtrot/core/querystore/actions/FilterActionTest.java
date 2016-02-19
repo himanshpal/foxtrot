@@ -15,33 +15,8 @@
  */
 package com.flipkart.foxtrot.core.querystore.actions;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.when;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.Vector;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
-import org.elasticsearch.action.admin.indices.get.GetIndexResponse;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.mockito.Mockito;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flipkart.foxtrot.common.Document;
 import com.flipkart.foxtrot.common.query.Filter;
 import com.flipkart.foxtrot.common.query.Query;
@@ -50,96 +25,52 @@ import com.flipkart.foxtrot.common.query.ResultSort;
 import com.flipkart.foxtrot.common.query.general.AnyFilter;
 import com.flipkart.foxtrot.common.query.general.EqualsFilter;
 import com.flipkart.foxtrot.common.query.general.NotEqualsFilter;
-import com.flipkart.foxtrot.common.query.numeric.BetweenFilter;
-import com.flipkart.foxtrot.common.query.numeric.GreaterEqualFilter;
-import com.flipkart.foxtrot.common.query.numeric.GreaterThanFilter;
-import com.flipkart.foxtrot.common.query.numeric.LessEqualFilter;
-import com.flipkart.foxtrot.common.query.numeric.LessThanFilter;
+import com.flipkart.foxtrot.common.query.numeric.*;
 import com.flipkart.foxtrot.common.query.string.ContainsFilter;
-import com.flipkart.foxtrot.core.MockElasticsearchServer;
 import com.flipkart.foxtrot.core.TestUtils;
-import com.flipkart.foxtrot.core.common.CacheUtils;
-import com.flipkart.foxtrot.core.datastore.DataStore;
-import com.flipkart.foxtrot.core.querystore.QueryExecutor;
-import com.flipkart.foxtrot.core.querystore.QueryStore;
-import com.flipkart.foxtrot.core.querystore.QueryStoreException;
-import com.flipkart.foxtrot.core.table.TableMetadataManager;
-import com.flipkart.foxtrot.core.querystore.actions.spi.AnalyticsLoader;
-import com.flipkart.foxtrot.core.querystore.impl.DistributedCacheFactory;
-import com.flipkart.foxtrot.core.querystore.impl.ElasticsearchConnection;
-import com.flipkart.foxtrot.core.querystore.impl.ElasticsearchQueryStore;
+import com.flipkart.foxtrot.core.exception.FoxtrotException;
 import com.flipkart.foxtrot.core.querystore.impl.ElasticsearchUtils;
-import com.flipkart.foxtrot.core.querystore.impl.HazelcastConnection;
 import com.google.common.collect.Lists;
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.test.TestHazelcastInstanceFactory;
+import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
+import org.elasticsearch.action.admin.indices.get.GetIndexResponse;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
+
+import java.util.*;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.when;
 
 /**
  * Created by rishabh.goyal on 28/04/14.
  */
 
-public class FilterActionTest {
-    private QueryExecutor queryExecutor;
-    private ObjectMapper mapper = new ObjectMapper();
-    private MockElasticsearchServer elasticsearchServer;
-    private HazelcastInstance hazelcastInstance;
-    private QueryStore queryStore;
+public class FilterActionTest extends ActionTest {
 
     @Before
     public void setUp() throws Exception {
-        ElasticsearchUtils.setMapper(mapper);
-        DataStore dataStore = TestUtils.getDataStore();
-
-        //Initializing Cache Factory
-        hazelcastInstance = new TestHazelcastInstanceFactory(1).newHazelcastInstance();
-        HazelcastConnection hazelcastConnection = Mockito.mock(HazelcastConnection.class);
-        when(hazelcastConnection.getHazelcast()).thenReturn(hazelcastInstance);
-        CacheUtils.setCacheFactory(new DistributedCacheFactory(hazelcastConnection, mapper));
-
-        elasticsearchServer = new MockElasticsearchServer(UUID.randomUUID().toString());
-        ElasticsearchConnection elasticsearchConnection = Mockito.mock(ElasticsearchConnection.class);
-        when(elasticsearchConnection.getClient()).thenReturn(elasticsearchServer.getClient());
-        ElasticsearchUtils.initializeMappings(elasticsearchServer.getClient());
-
-        // Ensure that table exists before saving/reading data from it
-        TableMetadataManager tableMetadataManager = Mockito.mock(TableMetadataManager.class);
-        when(tableMetadataManager.exists(TestUtils.TEST_TABLE_NAME)).thenReturn(true);
-        when(tableMetadataManager.get(anyString())).thenReturn(TestUtils.TEST_TABLE);
-        queryStore = new ElasticsearchQueryStore(tableMetadataManager, elasticsearchConnection, dataStore);
-        List<Document> documents = TestUtils.getQueryDocuments(mapper);
-        //when(queryStore.get(anyString(), Matchers.anyListOf(String.class))).thenReturn(documents);
-        AnalyticsLoader analyticsLoader = new AnalyticsLoader(tableMetadataManager, dataStore, queryStore, elasticsearchConnection);
-        TestUtils.registerActions(analyticsLoader, mapper);
-        ExecutorService executorService = Executors.newFixedThreadPool(1);
-        queryExecutor = new QueryExecutor(analyticsLoader, executorService);
-        queryStore.save(TestUtils.TEST_TABLE_NAME, documents);
-        for (Document document : documents) {
-            elasticsearchServer.getClient().admin().indices()
-                    .prepareRefresh(ElasticsearchUtils.getCurrentIndex(TestUtils.TEST_TABLE_NAME, document.getTimestamp()))
-                    .setForce(true).execute().actionGet();
-        }
+        super.setUp();
+        List<Document> documents = TestUtils.getQueryDocuments(getMapper());
+        getQueryStore().save(TestUtils.TEST_TABLE_NAME, documents);
+        getElasticsearchServer().getClient().admin().indices().prepareRefresh("*").setForce(true).execute().actionGet();
     }
 
-    @After
-    public void tearDown() throws IOException, InterruptedException {
-        elasticsearchServer.shutdown();
-        hazelcastInstance.shutdown();
-    }
-
-    @Test(expected = QueryStoreException.class)
-    public void testQueryException() throws QueryStoreException, JsonProcessingException {
+    @Test(expected = FoxtrotException.class)
+    public void testQueryException() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         ResultSort resultSort = new ResultSort();
         resultSort.setOrder(ResultSort.Order.asc);
         resultSort.setField("_timestamp");
         query.setSort(resultSort);
-        when(elasticsearchServer.getClient()).thenReturn(null);
-        queryExecutor.execute(query);
+        when(getElasticsearchConnection().getClient()).thenReturn(null);
+        getQueryExecutor().execute(query);
     }
 
     @Test
-    public void testQueryNoFilterAscending() throws QueryStoreException, JsonProcessingException {
+    public void testQueryNoFilterAscending() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         ResultSort resultSort = new ResultSort();
@@ -147,23 +78,23 @@ public class FilterActionTest {
         resultSort.setField("_timestamp");
         query.setSort(resultSort);
 
-        List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
+        List<Document> documents = new ArrayList<>();
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryNoFilterDescending() throws QueryStoreException, JsonProcessingException {
+    public void testQueryNoFilterDescending() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         ResultSort resultSort = new ResultSort();
@@ -172,22 +103,22 @@ public class FilterActionTest {
         query.setSort(resultSort);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryNoFilterWithLimit() throws QueryStoreException, JsonProcessingException {
+    public void testQueryNoFilterWithLimit() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(2);
@@ -197,15 +128,15 @@ public class FilterActionTest {
         query.setSort(resultSort);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
-    
+
     @Test
-    public void testQueryTotalHitsWithLimit() throws QueryStoreException, JsonProcessingException {
+    public void testQueryTotalHitsWithLimit() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(2);
@@ -215,16 +146,16 @@ public class FilterActionTest {
         query.setSort(resultSort);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
         assertEquals(9, actualResponse.getTotalHits());
     }
 
     @Test
-    public void testQueryAnyFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryAnyFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -237,22 +168,22 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(filter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryEqualsFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryEqualsFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -267,15 +198,15 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(equalsFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryNotEqualsFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryNotEqualsFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(3);
@@ -291,16 +222,16 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(notEqualsFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryGreaterThanFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryGreaterThanFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(3);
@@ -316,15 +247,15 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(greaterThanFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryGreaterEqualFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryGreaterEqualFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(3);
@@ -340,16 +271,16 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(greaterEqualFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryLessThanFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryLessThanFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(3);
@@ -365,13 +296,13 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(lessThanFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryLessEqualFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryLessEqualFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(3);
@@ -387,14 +318,14 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(lessEqualFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryBetweenFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryBetweenFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setLimit(3);
@@ -411,14 +342,14 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(betweenFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryContainsFilter() throws QueryStoreException, JsonProcessingException {
+    public void testQueryContainsFilter() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -433,20 +364,20 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(containsFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryEmptyResult() throws QueryStoreException, JsonProcessingException {
+    public void testQueryEmptyResult() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -456,12 +387,12 @@ public class FilterActionTest {
         query.setFilters(Lists.<Filter>newArrayList(equalsFilter));
 
         List<Document> documents = new ArrayList<Document>();
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryMultipleFiltersEmptyResult() throws QueryStoreException, JsonProcessingException {
+    public void testQueryMultipleFiltersEmptyResult() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -479,12 +410,12 @@ public class FilterActionTest {
         query.setFilters(filters);
 
         List<Document> documents = new ArrayList<Document>();
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryMultipleFiltersAndCombiner() throws QueryStoreException, JsonProcessingException {
+    public void testQueryMultipleFiltersAndCombiner() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -502,14 +433,14 @@ public class FilterActionTest {
         query.setFilters(filters);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Ignore
     @Test
-    public void testQueryMultipleFiltersOrCombiner() throws QueryStoreException, JsonProcessingException {
+    public void testQueryMultipleFiltersOrCombiner() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -532,21 +463,21 @@ public class FilterActionTest {
         query.setFilters(filters);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         //compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryPagination() throws QueryStoreException, JsonProcessingException {
+    public void testQueryPagination() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -564,8 +495,8 @@ public class FilterActionTest {
         query.setLimit(1);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
@@ -588,18 +519,18 @@ public class FilterActionTest {
 //        query.setLimit(1);
 //
 //        List<Document> documents = new ArrayList<Document>();
-//        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-//        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+//        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+//        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
 //        compare(documents, actualResponse.getDocuments());
 //
-//        AsyncDataToken response = queryExecutor.executeAsync(query);
+//        AsyncDataToken response = getQueryExecutor().executeAsync(query);
 //        Thread.sleep(200);
 //        ActionResponse actionResponse = CacheUtils.getCacheFor(response.getAction()).get(response.getKey());
 //        compare(documents, QueryResponse.class.cast(actionResponse).getDocuments());
 //    }
 
     @Test
-    public void testQueryNullFilters() throws QueryStoreException, JsonProcessingException, InterruptedException {
+    public void testQueryNullFilters() throws FoxtrotException, JsonProcessingException, InterruptedException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setFilters(null);
@@ -609,23 +540,23 @@ public class FilterActionTest {
         query.setSort(resultSort);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Ignore
     @Test
-    public void testQueryNullCombiner() throws QueryStoreException, JsonProcessingException, InterruptedException {
+    public void testQueryNullCombiner() throws FoxtrotException, JsonProcessingException, InterruptedException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setFilters(new ArrayList<Filter>());
@@ -635,45 +566,45 @@ public class FilterActionTest {
         query.setSort(resultSort);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @Test
-    public void testQueryNullSort() throws QueryStoreException, JsonProcessingException, InterruptedException {
+    public void testQueryNullSort() throws FoxtrotException, JsonProcessingException, InterruptedException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
         query.setFilters(new ArrayList<Filter>());
         query.setSort(null);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, mapper));
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, mapper));
-        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, mapper));
-        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, mapper));
-        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, mapper));
-        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, mapper));
-        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, mapper));
+        documents.add(TestUtils.getDocument("E", 1397658118004L, new Object[]{"os", "ios", "version", 2, "device", "ipad"}, getMapper()));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        documents.add(TestUtils.getDocument("C", 1397658118002L, new Object[]{"os", "android", "version", 2, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("B", 1397658118001L, new Object[]{"os", "android", "version", 1, "device", "galaxy"}, getMapper()));
+        documents.add(TestUtils.getDocument("A", 1397658118000L, new Object[]{"os", "android", "version", 1, "device", "nexus"}, getMapper()));
+        documents.add(TestUtils.getDocument("Z", 1397658117004L, new Object[]{"os", "android", "device", "nexus", "battery", 24}, getMapper()));
+        documents.add(TestUtils.getDocument("Y", 1397658117003L, new Object[]{"os", "android", "device", "nexus", "battery", 48}, getMapper()));
+        documents.add(TestUtils.getDocument("X", 1397658117002L, new Object[]{"os", "android", "device", "nexus", "battery", 74}, getMapper()));
+        documents.add(TestUtils.getDocument("W", 1397658117001L, new Object[]{"os", "android", "device", "nexus", "battery", 99}, getMapper()));
 
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     //TODO How to verify if cached data is returned.
     @Test
-    public void testQueryCaching() throws QueryStoreException, JsonProcessingException {
+    public void testQueryCaching() throws FoxtrotException, JsonProcessingException {
         Query query = new Query();
         query.setTable(TestUtils.TEST_TABLE_NAME);
 
@@ -691,23 +622,23 @@ public class FilterActionTest {
         query.setLimit(1);
 
         List<Document> documents = new ArrayList<Document>();
-        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, mapper));
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        documents.add(TestUtils.getDocument("D", 1397658118003L, new Object[]{"os", "ios", "version", 1, "device", "iphone"}, getMapper()));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         compare(documents, actualResponse.getDocuments());
     }
 
     @SuppressWarnings("deprecation")
     @Test
-    public void testMissingIndicesQuery() throws QueryStoreException {
-        List<Document> documents = TestUtils.getQueryDocumentsDifferentDate(mapper, new Date(2014 - 1900, 4, 1).getTime());
-        documents.addAll(TestUtils.getQueryDocumentsDifferentDate(mapper, new Date(2014 - 1900, 4, 5).getTime()));
-        queryStore.save(TestUtils.TEST_TABLE_NAME, documents);
+    public void testMissingIndicesQuery() throws FoxtrotException {
+        List<Document> documents = TestUtils.getQueryDocumentsDifferentDate(getMapper(), new Date(2014 - 1900, 4, 1).getTime());
+        documents.addAll(TestUtils.getQueryDocumentsDifferentDate(getMapper(), new Date(2014 - 1900, 4, 5).getTime()));
+        getQueryStore().save(TestUtils.TEST_TABLE_NAME, documents);
         for (Document document : documents) {
-            elasticsearchServer.getClient().admin().indices()
+            getElasticsearchServer().getClient().admin().indices()
                     .prepareRefresh(ElasticsearchUtils.getCurrentIndex(TestUtils.TEST_TABLE_NAME, document.getTimestamp()))
                     .setForce(true).execute().actionGet();
         }
-        GetIndexResponse response = elasticsearchServer.getClient().admin().indices().getIndex(new GetIndexRequest()).actionGet();
+        GetIndexResponse response = getElasticsearchServer().getClient().admin().indices().getIndex(new GetIndexRequest()).actionGet();
         assertEquals(3, response.getIndices().length);
 
         Query query = new Query();
@@ -716,18 +647,17 @@ public class FilterActionTest {
         BetweenFilter betweenFilter = new BetweenFilter();
         betweenFilter.setField("_timestamp");
         betweenFilter.setFrom(documents.get(0).getTimestamp());
-        betweenFilter.setTo(documents.get(documents.size() -1).getTimestamp());
+        betweenFilter.setTo(documents.get(documents.size() - 1).getTimestamp());
         betweenFilter.setTemporal(true);
         query.setFilters(Lists.<Filter>newArrayList(betweenFilter));
-        
-        QueryResponse actualResponse = QueryResponse.class.cast(queryExecutor.execute(query));
+        QueryResponse actualResponse = QueryResponse.class.cast(getQueryExecutor().execute(query));
         assertEquals(documents.size(), actualResponse.getDocuments().size());
     }
 
-    
-    public void compare(List<Document> expectedDocuments, List<Document> actualDocuments){
+
+    public void compare(List<Document> expectedDocuments, List<Document> actualDocuments) {
         assertEquals(expectedDocuments.size(), actualDocuments.size());
-        for (int i = 0 ; i < expectedDocuments.size(); i++){
+        for (int i = 0; i < expectedDocuments.size(); i++) {
             Document expected = expectedDocuments.get(i);
             Document actual = actualDocuments.get(i);
             assertNotNull(expected);
@@ -736,8 +666,10 @@ public class FilterActionTest {
             assertNotNull("Actual document data should not be null", actual.getData());
             assertEquals("Actual Doc Id should match expected Doc Id", expected.getId(), actual.getId());
             assertEquals("Actual Doc Timestamp should match expected Doc Timestamp", expected.getTimestamp(), actual.getTimestamp());
-            Map<String, Object> expectedMap = mapper.convertValue(expected.getData(), new TypeReference<HashMap<String, Object>>() {});
-            Map<String, Object> actualMap = mapper.convertValue(actual.getData(), new TypeReference<HashMap<String, Object>>() {});
+            Map<String, Object> expectedMap = getMapper().convertValue(expected.getData(), new TypeReference<HashMap<String, Object>>() {
+            });
+            Map<String, Object> actualMap = getMapper().convertValue(actual.getData(), new TypeReference<HashMap<String, Object>>() {
+            });
             assertEquals("Actual data should match expected data", expectedMap, actualMap);
         }
     }

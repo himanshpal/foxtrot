@@ -16,7 +16,8 @@
 package com.flipkart.foxtrot.core.table.impl;
 
 import com.flipkart.foxtrot.common.Table;
-import com.flipkart.foxtrot.core.querystore.impl.DistributedCache;
+import com.flipkart.foxtrot.core.cache.impl.DistributedCache;
+import com.flipkart.foxtrot.core.exception.FoxtrotException;
 import com.flipkart.foxtrot.core.querystore.impl.ElasticsearchConnection;
 import com.flipkart.foxtrot.core.querystore.impl.HazelcastConnection;
 import com.flipkart.foxtrot.core.table.TableMetadataManager;
@@ -29,7 +30,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -37,6 +37,7 @@ import java.util.List;
  * Date: 15/03/14
  * Time: 10:11 PM
  */
+
 public class DistributedTableMetadataManager implements TableMetadataManager {
     private static final Logger logger = LoggerFactory.getLogger(DistributedTableMetadataManager.class);
     public static final String DATA_MAP = "tablemetadatamap";
@@ -59,14 +60,14 @@ public class DistributedTableMetadataManager implements TableMetadataManager {
 
 
     @Override
-    public void save(Table table) throws Exception {
+    public void save(Table table) throws FoxtrotException {
         logger.info(String.format("Saving Table : %s", table));
         tableDataStore.put(table.getName(), table);
         tableDataStore.flush();
     }
 
     @Override
-    public Table get(String tableName) throws Exception {
+    public Table get(String tableName) throws FoxtrotException {
         logger.debug(String.format("Getting Table : %s", tableName));
         if (tableDataStore.containsKey(tableName)) {
             return tableDataStore.get(tableName);
@@ -75,27 +76,22 @@ public class DistributedTableMetadataManager implements TableMetadataManager {
     }
 
     @Override
-    public List<Table> get() throws Exception {
+    public List<Table> get() throws FoxtrotException {
         if (0 == tableDataStore.size()) { //HACK::Check https://github.com/hazelcast/hazelcast/issues/1404
             return Collections.emptyList();
         }
         ArrayList<Table> tables = Lists.newArrayList(tableDataStore.values());
-        Collections.sort(tables, new Comparator<Table>() {
-            @Override
-            public int compare(Table lhs, Table rhs) {
-                return lhs.getName().toLowerCase().compareTo(rhs.getName().toLowerCase());
-            }
-        });
+        Collections.sort(tables, (lhs, rhs) -> lhs.getName().toLowerCase().compareTo(rhs.getName().toLowerCase()));
         return tables;
     }
 
     @Override
-    public boolean exists(String tableName) throws Exception {
+    public boolean exists(String tableName) throws FoxtrotException {
         return tableDataStore.containsKey(tableName);
     }
 
     @Override
-    public void delete(String tableName) throws Exception {
+    public void delete(String tableName) throws FoxtrotException {
         logger.info(String.format("Deleting Table : %s", tableName));
         if (tableDataStore.containsKey(tableName)) {
             tableDataStore.delete(tableName);
