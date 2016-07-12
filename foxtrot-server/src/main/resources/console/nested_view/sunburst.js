@@ -36,7 +36,7 @@ Sunburst.prototype.render = function (data) {
 
     var colors = randomColor({
         count: keys.length,
-        hue: 'blue'
+        hue: 'green'
     });
 
     for (var index in keys) {

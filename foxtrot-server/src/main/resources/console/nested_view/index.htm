@@ -63,36 +63,44 @@
         </div>
     </nav>
 
-    <div class="row col-md-12 grouping-content">
-        <form class="form-horizontal" name="grouping_form" id="grouping_form">
-            <div class="form-group col-md-5">
-                <label for="table_name" class="col-md-2">Select Table</label>
-                <select class="form-control col-md-3" required id="table_name" name="table_name"></select>
-            </div>
-            <div class="form-group col-md-5">
-                <label for="grouping_fields" class="col-md-2">Grouping Fields</label>
-                <select class="form-control col-md-3" required id="grouping_fields" name="grouping_fields"
-                        multiple="multiple"></select>
-            </div>
-            <div class="form-group col-md-2">
-                <label></label>
-                <button type="submit" class="form-control btn btn-primary" name="grouping-button" id="grouping-button">
-                    Execute
-                </button>
-            </div>
-        </form>
-    </div>
-    <div class="row col-md-12 grouping-chart" id="grouping-view">
-        <div class="grouping-view-main">
-            <div class="grouping-view-sequence"></div>
-            <div class="grouping-view-chart">
-            </div>
-        </div>
-        <div class="grouping-view-sidebar">
-            <input type="checkbox" class="grouping-view-toggle-legend">Legend<br/>
+    <div class="row col-md-12">
+        <table class="table table-condensed center-block grouping_table_meta">
+            <tbody>
+                <tr>
+                    <td class="control-table-cell">
+                        <label for="table_name"><strong>Select Table</strong></label>
+                        <select data-style="btn-success" id="table_name"></select>
+                    </td>
+                    <td class="control-table-cell">
+                        <label for="grouping-fields"><strong>Select Grouping Fields</strong></label>
+                        <select data-style="btn-primary" id="grouping-fields" multiple="multiple"></select>
+                    </td>
+                    <td style="height: 100%">
+                        <button style="display:inline-block; vertical-align: middle;" class="btn btn-danger"
+                                id="grouping-button" name="grouping-button">Execute
+                        </button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <table class="table grouping_table_data">
+            <tbody>
+                <tr id="grouping-view">
+                    <td>
+                        <div class="grouping-view-main">
+                            <div class="grouping-view-sequence"></div>
+                            <div class="grouping-view-chart">
+                            </div>
+                        </div>
+                        <div class="grouping-view-sidebar">
+                            <input type="checkbox" class="grouping-view-toggle-legend">Legend<br/>
 
-            <div class="grouping-view-legend" style="visibility: hidden;"></div>
-        </div>
+                            <div class="grouping-view-legend" style="visibility: hidden;"></div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -107,14 +115,13 @@
 <script src="../js/handlebars-helper.js"></script>
 <script src="../js/randomColor.min.js"></script>
 <script src="../js/eventbus.js"></script>
-<script src="../js/grouping_view.js"></script>
 <script src="sunburst.js"></script>
 <script>
 
     $("#table_name").selectpicker();
     $("#table_name").on("change", loadFieldList);
 
-    $("#grouping_fields").selectpicker();
+    $("#grouping-fields").selectpicker();
     $("#grouping-button").on("click", handleLoadSunburst);
 
     $(document).ready(loadTableList);
@@ -128,7 +135,7 @@
     function loadSunburst() {
         var table = $('#table_name').find('option:selected').text();
         var nesting = [];
-        $('#grouping_fields').find(':selected').each(function (i, selected) {
+        $('#grouping-fields').find(':selected').each(function (i, selected) {
             nesting[i] = $(selected).text();
         });
 
@@ -180,14 +187,14 @@
             success: function (data) {
                 var mappings = data['mappings'];
                 for (var index in mappings) {
-                    $('#grouping_fields').append($('<option>',
+                    $('#grouping-fields').append($('<option>',
                             {
                                 value: mappings[index]['field'],
                                 text: mappings[index]['field']
                             }
                     ));
                 }
-                $('#grouping_fields').selectpicker('refresh');
+                $('#grouping-fields').selectpicker('refresh');
             }
         });
     }
