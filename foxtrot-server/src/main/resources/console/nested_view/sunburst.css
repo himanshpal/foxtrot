@@ -1,0 +1,47 @@
+body {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    background-color: #fff;
+}
+
+.grouping-view-sidebar {
+    float: right;
+    width: 100px;
+}
+
+.grouping-view-sequence {
+    width: 600px;
+    height: 70px;
+}
+
+.grouping-view-legend {
+    padding: 10px 0 0 3px;
+}
+
+.grouping-view-sequence text, .grouping-view-legend text {
+    font-weight: 600;
+    fill: #fff;
+}
+
+.grouping-view-chart {
+    position: relative;
+}
+
+.grouping-view-chart path {
+    stroke: #fff;
+}
+
+.grouping-view-explanation {
+    position: absolute;
+    top: 260px;
+    left: 305px;
+    width: 140px;
+    text-align: center;
+    color: #666;
+    z-index: -1;
+}
+
+.grouping-view-percentage {
+    font-size: 2.5em;
+}
